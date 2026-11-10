@@ -29,7 +29,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from datasets import NEEDS_DOWNLOAD, OFFLINE, load  # noqa: E402
 
 from dataprune import PruneConfig, prune  # noqa: E402
-from dataprune.embedders import get_embedder  # noqa: E402
+from dataprune.embedders import CachedEmbedder, get_embedder  # noqa: E402
 from dataprune.energy import break_even_runs  # noqa: E402
 from dataprune.models import make_eval_model  # noqa: E402
 from dataprune.preprocess import TabularPreprocessor  # noqa: E402
@@ -38,8 +38,11 @@ from dataprune.verify import _fit_eval  # noqa: E402
 METHODS = ["random", "el2n", "ccs", "d2", "clean_random", "clean_el2n", "full_mix"]
 
 
+EXTRA: dict = {}      # filled from CLI flags (semdedup threshold, energy backend, grid, price, d2 mode)
+
+
 def method_config(method: str, keep: float, seed: int, watts: float) -> PruneConfig:
-    base = dict(keep_ratio=keep, seed=seed, cpu_watts_per_core=watts)
+    base = dict(keep_ratio=keep, seed=seed, cpu_watts_per_core=watts, **EXTRA)
     if method == "random":
         return PruneConfig(selector="random", do_hash=False, do_semdedup=False, do_label_noise=False, **base)
     if method in ("el2n", "ccs", "d2"):
@@ -63,12 +66,21 @@ def run_dataset(name, keeps, seeds, watts, max_rows, embedder_name):
     C = len(classes)
 
     # one shared featurisation for evaluation
+    emb_cpu_s = 0.0
     if modality == "tabular":
         ref = TabularPreprocessor().fit(Xtr)
-    else:
-        ref = get_embedder(embedder_name).fit(Xtr)
-    Ztr, Zte = ref.transform(Xtr), ref.transform(Xte)
-    emb = get_embedder(embedder_name) if modality == "image" else None
+        emb = None
+    elif embedder_name == "pixel":
+        ref = get_embedder("pixel").fit(Xtr)
+        emb = get_embedder("pixel")
+    else:                                   # DINOv2 is stateless -> embed every image ONCE and reuse it everywhere
+        emb = CachedEmbedder(get_embedder(embedder_name))
+        ref = emb
+    Ztr = ref.transform(Xtr)
+    if isinstance(emb, CachedEmbedder):
+        emb_cpu_s = emb.cpu_s               # one-time cost of embedding the train set; charged to every pruning run
+        print(f"  embedded {emb.n_embedded} train images once: {emb.wall_s:.0f}s wall, {emb_cpu_s:.0f} CPU-s", flush=True)
+    Zte = ref.transform(Xte)
     print(f"\n=== {name}: train {len(ytr)} rows, test {len(yte)} rows, {C} classes ({d['notes']}) ===", flush=True)
 
     rows = []
@@ -91,11 +103,11 @@ def run_dataset(name, keeps, seeds, watts, max_rows, embedder_name):
                 wall = time.perf_counter() - t0
                 idx = res.keep_indices
                 ev = _fit_eval(make_eval_model(modality, s), Ztr[idx], y_int[idx], Zte, yte_int, C, watts)
-                over_kwh = res.energy["total_kwh_est"]
+                over_kwh = res.energy["total_kwh_est"] + emb_cpu_s * watts / 3.6e6     # + one-time embedding cost
                 be = break_even_runs(over_kwh * 3.6e6, full_kwh * 3.6e6, ev["fit_kwh_est"] * 3.6e6)
                 rows.append(dict(dataset=name, keep=keep, method=method, seed=s, n_train=len(idx), acc=ev["acc"],
                                  bal_acc=ev["bal_acc"], retained=ev["acc"] / full_acc,
-                                 prune_cpu_s=res.energy["total_cpu_s"], prune_kwh=over_kwh,
+                                 prune_cpu_s=res.energy["total_cpu_s"] + emb_cpu_s, prune_kwh=over_kwh,
                                  train_cpu_s=ev["fit_cpu_s"], train_kwh=ev["fit_kwh_est"],
                                  break_even_runs=be if np.isfinite(be) else np.nan, selector=res.selector_used))
             sub = [r for r in rows if r["keep"] == keep and r["method"] == method]
@@ -172,7 +184,14 @@ def main():
     ap.add_argument("--max-rows", type=int, default=None, help="subsample (for adult/mnist/cifar10)")
     ap.add_argument("--embedder", default="pixel", choices=["pixel", "dinov2"])
     ap.add_argument("--out", default="benchmark_out")
+    ap.add_argument("--semdedup-threshold", type=float, default=0.98)
+    ap.add_argument("--energy-backend", default="estimate", choices=["estimate", "codecarbon"])
+    ap.add_argument("--grid-kg-per-kwh", type=float, default=0.7)
+    ap.add_argument("--price-per-kwh", type=float, default=8.0)
+    ap.add_argument("--d2-mode", default="simplified", choices=["simplified", "paper"])
     a = ap.parse_args()
+    EXTRA.update(semdedup_threshold=a.semdedup_threshold, energy_backend=a.energy_backend,
+                 grid_kg_co2_per_kwh=a.grid_kg_per_kwh, price_per_kwh=a.price_per_kwh, d2_mode=a.d2_mode)
     os.makedirs(a.out, exist_ok=True)
     frames = [run_dataset(n, a.keeps, a.seeds, a.watts_per_core, a.max_rows, a.embedder) for n in a.datasets]
     df = pd.concat(frames, ignore_index=True)

@@ -55,7 +55,8 @@ def run_race(
         probe_idx = all_idx
     ystrat = y[probe_idx]
     pc = np.bincount(ystrat, minlength=n_classes)
-    strat2 = ystrat if pc[pc > 0].min() >= 2 else None
+    n_val = int(np.ceil(0.25 * len(probe_idx)))
+    strat2 = ystrat if (pc[pc > 0].min() >= 2 and n_val >= int((pc > 0).sum())) else None   # tiny probe: unstratified
     tr_idx, va_idx = train_test_split(probe_idx, test_size=0.25, stratify=strat2, random_state=cfg.seed)
 
     Ztr, ytr, gtr = Z[tr_idx], y[tr_idx], geom[tr_idx]

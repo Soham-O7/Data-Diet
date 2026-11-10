@@ -22,8 +22,21 @@ out["table"], out["verdict"]
 ```
 CLI: `python -m dataprune run --csv data.csv --target label --drop id --keep 0.4 --out out/`
 (images: `--images folder/` with one sub-folder per class; `--embedder dinov2`).
-Benchmark: `python benchmarks/run_benchmark.py` (offline datasets) — see `benchmark_out/results.md`.
-Tests: `python -m pytest tests` (42 tests).
+Benchmark: `python benchmarks/run_benchmark.py` (offline datasets) — see `benchmark_out/results.md`. Setup, file placement and the real-data runs: `SETUP_AND_HANDOFF.md`.
+Tests: `pip install -r requirements.txt` then `python -m pytest tests` (67 tests; CI in `.github/workflows/tests.yml`).
+
+## Reports and tools built on the pipeline's own numbers
+```python
+from dataprune import removal_export, class_warnings, health_score, recommend_keep_ratio, ImpactTracker, compare_training
+removal_export(res, X).to_csv("removed_rows.csv")   # every dropped row: stage, reason, score (SemDeDup cosine / label-noise margin / difficulty)
+class_warnings(res)                                  # plain-language alerts when a class is squeezed or vanishes
+health_score(X, y)                                   # 0-100: duplicates, missing cells, label conflicts, imbalance
+recommend_keep_ratio(X, y, tolerance=0.02)           # sweeps 80%..10% with the real prune + proof run, stops at first failure
+ImpactTracker("impact_log.json").log_experiment("run1", out, runs=10)   # running kWh / CO2 / cost totals (ESTIMATES)
+compare_training(["python","train.py","full.csv"], ["python","train.py","pruned.csv"], overhead_kwh=...)  # YOUR model's CPU-time cost
+```
+CLI: `python -m dataprune run ...` now also writes `removed_rows.csv` and prints class warnings; `python -m dataprune recommend --csv data.csv --target label --tolerance 0.02`.
+`compare_training` measures CPU-seconds of your own command (OS-reported, no GPU) - still an estimate unless your script reports real meter / CodeCarbon readings.
 
 ## Design decisions worth knowing (for review)
 - **keep_ratio is relative to the original row count.** Quotas (stage 6) are defined on class counts *after exact-duplicate
@@ -55,6 +68,19 @@ Tests: `python -m pytest tests` (42 tests).
    embeddings), not a CNN: with such cheap models the pruning overhead takes tens to hundreds of runs to repay. Savings
    only look good against genuinely expensive training.
 6. The proof for images trains a linear head on frozen embeddings, not a full network.
+
+## Status of the handoff items
+- **Done and tested here:** packaging (`requirements.txt`, `pyproject.toml`), CI, the new reports/tools above, hardening on messy inputs, the algorithm check below.
+- **Scripts written, but NOT run here (needs internet / torch / codecarbon / your idle machine):** Adult + MNIST + CIFAR-10 benchmarks, DINOv2, SemDeDup threshold tuning, real CodeCarbon. Run `python scripts/run_real_benchmarks.py` - see `SETUP_AND_HANDOFF.md`. The checked-in `benchmark_out/` is still sample data (digits, breast_cancer, synthetic), refreshed after the CCS fix.
+- **Algorithm check against the papers** (D2: arXiv 2310.07931, CCS: 2210.15809, SemDeDup: 2303.09540):
+  - SemDeDup: matches (k-means clusters, sort by centroid similarity, keep the least-central item, cosine >= 1-eps). Differences: we only compare within a class, use sklearn k-means (not spherical FAISS k-means) and k = sqrt(n). The paper's eps is ~0.1-0.25 for CLIP embeddings, so our 0.98 cosine (eps 0.02) is strict - tune it per embedder with `benchmarks/tune_semdedup.py`.
+  - CCS: matches (drop hardest beta, 50 equal-width strata, smallest stratum first, uniform sampling). Fixed: the per-stratum budget now uses floor(m/|B|) like the paper (was ceil). The paper tunes beta per pruning rate (0 at low rates, 0.3 at 90% on CIFAR-10); ours defaults to 0.1.
+  - D2: the original `select_d2` was a loose variant (degree-averaged forward messages, scaled flat penalty). `d2_mode="paper"` now implements the published rules: kernel exp(-gamma d^2), forward x_i += sum e_ij x_j (gamma_f = 1), reverse x_j -= e_kj x_k. Only deviation: distances are divided by the median kNN distance so the kernel does not depend on embedding units. `d2_paper_gamma_r` defaults to 0.9 (paper tunes 0-1 per pruning rate, 0.9 at 30%, 0 at 90%) - untuned here. On the offline sample data (`benchmarks/compare_d2.py`, `benchmark_out/d2_comparison.csv`) paper mode was equal or better at 20% keep (e.g. 97.9% vs 84.5% retained on the synthetic set) and mixed at 40-60%; the default is still "simplified" so earlier numbers stay comparable. Use `d2_mode="paper"` (CLI `--d2-mode paper`) before putting "D2 Pruning" on slides, and tune gamma_r.
+  - EL2N: implemented as the paper's idea (error L2-norm early in training) but on a cheap proxy (gradient boosting / small MLP, first half of the epochs), not a deep net - not verified against the paper's exact protocol.
+
+## Remaining open
+- Regression targets (pipeline is classification only); FAISS beyond ~100k rows; text/audio modalities.
+- `BACKENED.py` / `ai_engine_and_bankened.py` are untouched Colab exports that do not use `dataprune`.
 
 ## Adding a modality
 One loader (`io.py`) + one embedder with `fit_transform/transform` (`embedders.py`), then handle the modality string in

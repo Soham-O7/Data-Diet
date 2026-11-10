@@ -1,0 +1,15 @@
+# Everything, including the pieces that need internet / heavy installs (handoff items 2-4).
+# Install the core first (pinned, tested):   pip install -r requirements.txt
+# Then this file:                            pip install -r requirements-full.txt
+-r requirements.txt
+
+# DINOv2 embeddings + CIFAR-10 loader. For a CUDA GPU use the command from https://pytorch.org/get-started/locally/
+torch
+torchvision
+
+# real energy measurement (replaces the CPU-seconds x watts estimate)
+codecarbon
+
+# optional extras the code can use if present
+cleanlab       # alternative confident-learning backend (stage 3)
+pyarrow        # parquet files

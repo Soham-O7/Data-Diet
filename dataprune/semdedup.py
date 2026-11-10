@@ -67,6 +67,7 @@ def semdedup(
             S = np.where(cols < rows, S, -1.0)
             dup_score[g[s:e]] = S.max(axis=1)
 
+    info["_dup_score"] = dup_score          # per-row max cosine to an earlier same-group item (popped by pipeline)
     flagged = dup_score > threshold
     n_flag = int(flagged.sum())
     info["n_flagged"] = n_flag

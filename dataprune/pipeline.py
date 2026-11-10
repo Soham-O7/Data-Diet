@@ -62,6 +62,7 @@ class PruneResult:
     transformer: Any                  # fitted TabularPreprocessor / embedder: .transform(X) -> Z
     config: PruneConfig
     warnings: List[str] = field(default_factory=list)
+    removal_details: Dict[str, Dict[int, float]] = field(default_factory=dict)   # stage -> {orig index: score}
 
     def transform(self, X):
         return self.transformer.transform(X)
@@ -148,6 +149,7 @@ def prune(
     stages: List[StageReport] = []
     removed: Dict[str, np.ndarray] = {}
     warns: List[str] = []
+    details: Dict[str, Dict[int, float]] = {}
     pos = np.arange(N)                         # original index of every surviving row
 
     def _sec(name):
@@ -205,7 +207,9 @@ def prune(
         with meter.stage("2_semdedup"):
             keep, info = semdedup(G1[alive], y1[alive], cfg.semdedup_threshold, cfg.semdedup_max_remove_frac,
                                   cfg.semdedup_n_clusters, cfg.seed)
+            dup = info.pop("_dup_score")
             removed["2_semdedup"] = pos1[alive[~keep]]
+            details["2_semdedup"] = {int(o): float(d) for o, d in zip(removed["2_semdedup"], dup[~keep])}
             alive = alive[keep]
         stages.append(StageReport("2_semdedup", n_in, len(alive), _sec("2_semdedup"), info))
     else:
@@ -218,9 +222,10 @@ def prune(
         with meter.stage("3_label_noise"):
             P = oof_probabilities(Z1[alive], y1[alive], C, lambda s: make_oof_model(modality, s),
                                   folds=cfg.noise_cv_folds, seed=cfg.seed)
-            issue, info, _ = find_label_issues(P, y1[alive], cfg.noise_max_remove_frac,
+            issue, info, margin = find_label_issues(P, y1[alive], cfg.noise_max_remove_frac,
                                                cfg.noise_max_remove_frac_per_class, cfg.use_cleanlab_if_available)
             removed["3_label_noise"] = pos1[alive[issue]]
+            details["3_label_noise"] = {int(o): float(m_) for o, m_ in zip(removed["3_label_noise"], margin[issue])}
             alive = alive[~issue]
         stages.append(StageReport("3_label_noise", n_in, len(alive), _sec("3_label_noise"), info))
     else:
@@ -243,6 +248,10 @@ def prune(
 
     # ------------------------------------------------------------ stage 4: difficulty
     selector = cfg.selector
+    if selector != "random" and int((np.bincount(yc, minlength=C) > 0).sum()) < 2:
+        warns.append("Only one class remains, so there is no learning signal to score difficulty; "
+                     "falling back to random selection.")
+        selector = "random"
     ds: Optional[DifficultyScores] = None
     needs_scores = selector != "random"
     if needs_scores and K < m:
@@ -279,6 +288,9 @@ def prune(
                               if "5_select" in meter.stages else 0.0,
                               {"selector": selector, "quota_mode": quota_mode}))
     removed["5_selection"] = pos1[np.setdiff1d(alive, alive[sel], assume_unique=True)]
+    if ds.metric != "none":
+        pos_to_diff = dict(zip(pos1[alive].tolist(), ds.difficulty.tolist()))
+        details["5_selection"] = {int(o): float(pos_to_diff[int(o)]) for o in removed["5_selection"]}
     keep_base = alive[sel]
     keep_orig = np.sort(pos1[keep_base])
 
@@ -306,4 +318,5 @@ def prune(
         transformer=transformer,
         config=cfg,
         warnings=warns,
+        removal_details=details,
     )

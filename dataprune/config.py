@@ -51,6 +51,9 @@ class PruneConfig:
     d2_k: int = 10
     d2_gamma_forward: float = 0.5
     d2_gamma_reverse: float = 1.0
+    d2_mode: str = "simplified"          # 'simplified' (own variant, default) | 'paper' (Maharana et al. as published)
+    d2_paper_gamma_f: float = 1.0        # paper mode: forward kernel exp(-gamma_f d^2) (paper fixes 1.0)
+    d2_paper_gamma_r: float = 0.9        # paper mode: reverse kernel; paper tuned 0.0-1.0 per pruning rate (0.9 at 30%, 0 at 90%)
 
     # ---- stage 6: per-class quotas ----
     quota_mode: str = "auto"             # 'proportional' | 'balanced_cap' | 'auto'
@@ -84,6 +87,8 @@ class PruneConfig:
             raise ValueError(f"unknown difficulty_metric {self.difficulty_metric!r}")
         if self.energy_backend not in ("estimate", "codecarbon"):
             raise ValueError(f"unknown energy_backend {self.energy_backend!r}")
+        if self.d2_mode not in ("simplified", "paper"):
+            raise ValueError(f"unknown d2_mode {self.d2_mode!r}")
         if self.race_metric not in ("auto", "accuracy", "balanced_accuracy"):
             raise ValueError(f"unknown race_metric {self.race_metric!r}")
         if not (0.0 < self.semdedup_threshold <= 1.0):

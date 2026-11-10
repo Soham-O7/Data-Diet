@@ -250,8 +250,11 @@ def test_codecarbon_missing_falls_back_to_estimate(monkeypatch):
     monkeypatch.setitem(sys.modules, "codecarbon", None)     # makes `import codecarbon` raise ImportError
     m = EnergyMeter(10.0, backend="codecarbon")
     assert m.backend_used == "estimate" and "unavailable" in m.backend_note
+    import time
     with m.stage("a"):
-        sum(i for i in range(100000))
+        t = time.process_time()
+        while time.process_time() - t < 0.1:       # burn >= 100 ms CPU (Windows CPU clock ticks ~15 ms)
+            pass
     assert m.kwh() > 0 and m.co2_kg() == pytest.approx(m.kwh() * 0.7)
 
 
@@ -270,3 +273,29 @@ def test_pipeline_reports_co2_and_cost():
     e = r.energy
     assert e["backend_used"] == "estimate" and e["total_co2_kg_est"] == pytest.approx(e["total_kwh_est"] * 0.4)
     assert "total_cost_est" in e
+
+
+def test_d2_paper_mode_selects_budget_and_spreads_out():
+    import numpy as np
+    from dataprune.selection import select_d2_paper
+
+    rng = np.random.default_rng(0)
+    geom = np.vstack([rng.normal(0, 0.05, (60, 4)), rng.normal(5, 0.05, (60, 4))]).astype(np.float32)
+    score = np.ones(120)                       # equal difficulty: reverse penalty must spread picks over both blobs
+    sel = select_d2_paper(score, geom, 20, k=8, gamma_r=0.3)
+    assert len(sel) == 20 and len(set(sel)) == 20
+    assert (sel < 60).any() and (sel >= 60).any()
+    assert len(select_d2_paper(score, geom, 500)) == 120
+
+
+def test_d2_mode_validation_and_pipeline_run():
+    import numpy as np, pandas as pd
+    from sklearn.datasets import make_classification
+    from dataprune import PruneConfig, prune
+    import pytest
+
+    with pytest.raises(ValueError):
+        PruneConfig(d2_mode="nope").validate()
+    X, y = make_classification(n_samples=500, n_features=8, n_informative=5, random_state=0)
+    res = prune(pd.DataFrame(X), y, PruneConfig(keep_ratio=0.4, selector="d2", d2_mode="paper"))
+    assert len(res.keep_indices) == 200

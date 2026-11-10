@@ -107,6 +107,49 @@ class DinoV2Embedder:
         return self.fit(images).transform(images)
 
 
+class CachedEmbedder:
+    """Memoises a STATELESS embedder (e.g. DINOv2: output for an image never depends on other images) per row, so
+    repeated prune() calls on the same data embed each image only once. Do not wrap PixelPCAEmbedder (it is fitted
+    on the data it sees). `cpu_s` / `wall_s` accumulate the real cost of the embeddings actually computed."""
+
+    def __init__(self, base):
+        self.base = base
+        self.name = getattr(base, "name", "embedder")
+        self.cache = {}
+        self.cpu_s = 0.0
+        self.wall_s = 0.0
+        self.n_embedded = 0
+
+    @staticmethod
+    def _key(row) -> bytes:
+        import hashlib
+
+        r = np.ascontiguousarray(row)
+        return hashlib.blake2b(r.tobytes(), digest_size=16, salt=str(r.shape).encode()[:16]).digest()
+
+    def fit(self, images):
+        return self
+
+    def transform(self, images):
+        import time
+
+        a = np.asarray(images)
+        keys = [self._key(a[i]) for i in range(len(a))]
+        miss = [i for i, k in enumerate(keys) if k not in self.cache]
+        if miss:
+            w0, c0 = time.perf_counter(), time.process_time()
+            Z = np.asarray(self.base.transform(a[miss]), dtype=np.float32)
+            self.cpu_s += time.process_time() - c0
+            self.wall_s += time.perf_counter() - w0
+            self.n_embedded += len(miss)
+            for i, z in zip(miss, Z):
+                self.cache[keys[i]] = z
+        return np.stack([self.cache[k] for k in keys]) if keys else np.zeros((0, 0), dtype=np.float32)
+
+    def fit_transform(self, images):
+        return self.transform(images)
+
+
 def get_embedder(name: str = "pixel", **kw):
     if name in ("pixel", "pixel_pca"):
         return PixelPCAEmbedder(**kw)

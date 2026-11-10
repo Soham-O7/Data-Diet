@@ -15,6 +15,7 @@ import pandas as pd
 from .config import PruneConfig
 from .embedders import get_embedder
 from .experiment import run_experiment
+from .insights import class_warnings, health_score, recommend_keep_ratio, removal_export
 from .io import load_csv, load_image_folder
 from .pipeline import prune, _jsonable
 
@@ -48,13 +49,34 @@ def main(argv=None) -> int:
     r.add_argument("--img-size", type=int, nargs=2, metavar=("H", "W"))
     r.add_argument("--seed", type=int, default=0)
     r.add_argument("--watts-per-core", type=float, default=15.0)
+    r.add_argument("--semdedup-threshold", type=float, default=0.98, help="cosine threshold (re-tune for DINOv2)")
+    r.add_argument("--energy-backend", default="estimate", choices=["estimate", "codecarbon"])
+    r.add_argument("--grid-kg-per-kwh", type=float, default=0.7, help="YOUR grid carbon intensity (kg CO2 / kWh)")
+    r.add_argument("--price-per-kwh", type=float, default=8.0, help="YOUR electricity tariff per kWh")
+    r.add_argument("--d2-mode", default="simplified", choices=["simplified", "paper"])
     r.add_argument("--no-proof", action="store_true", help="skip the full-vs-pruned-vs-random proof run")
     r.add_argument("--copy-images", action="store_true")
     r.add_argument("--out", default="prune_out")
+    rec = sub.add_parser("recommend", help="sweep keep ratios and recommend the smallest that stays within tolerance")
+    rec.add_argument("--csv", required=True)
+    rec.add_argument("--target", required=True)
+    rec.add_argument("--drop", nargs="*", default=[])
+    rec.add_argument("--tolerance", type=float, default=0.02, help="max accuracy loss vs full, e.g. 0.02")
+    rec.add_argument("--seed", type=int, default=0)
     args = ap.parse_args(argv)
 
+    if args.cmd == "recommend":
+        X, y = load_csv(args.csv, args.target, args.drop)
+        out = recommend_keep_ratio(X, y.to_numpy(), PruneConfig(seed=args.seed), tolerance=args.tolerance)
+        print(out["sweep"].to_string(index=False, float_format=lambda v: f"{v:.4g}"))
+        print(f"\nrecommended keep ratio: {out['recommended_keep_ratio']}\n{out['note']}")
+        return 0
+
     cfg = PruneConfig(keep_ratio=args.keep, selector=args.selector, quota_mode=args.quota_mode, seed=args.seed,
-                      cpu_watts_per_core=args.watts_per_core)
+                      cpu_watts_per_core=args.watts_per_core,
+                      semdedup_threshold=args.semdedup_threshold, energy_backend=args.energy_backend,
+                      grid_kg_co2_per_kwh=args.grid_kg_per_kwh, price_per_kwh=args.price_per_kwh,
+                      d2_mode=args.d2_mode)
     os.makedirs(args.out, exist_ok=True)
 
     if args.csv:
@@ -80,8 +102,14 @@ def main(argv=None) -> int:
         modality, Xp, yp = "image", imgs, labels
 
     np.savetxt(os.path.join(args.out, "kept_indices.txt"), res.keep_indices, fmt="%d")
+    removal_export(res, X if args.csv else None).to_csv(os.path.join(args.out, "removed_rows.csv"), index=False)
     summary = res.summary()
+    summary["class_warnings"] = class_warnings(res)
+    if args.csv:
+        summary["health"] = health_score(X, y.to_numpy())
     _print_summary(res)
+    for w in summary["class_warnings"]:
+        print("CLASS WARNING:", w)
 
     if not args.no_proof and len(yp) >= 200:
         print("\nrunning proof (hold out 20%, prune the rest, train full vs pruned vs random) ...")
@@ -98,7 +126,7 @@ def main(argv=None) -> int:
         out["raw"].to_csv(os.path.join(args.out, "proof_raw.csv"), index=False)
     with open(os.path.join(args.out, "report.json"), "w") as f:
         json.dump(summary, f, indent=2, default=_jsonable)
-    print(f"\nwrote {args.out}/ (report.json, kept_indices.txt, " + ("pruned.csv" if args.csv else "kept_paths.txt") + ")")
+    print(f"\nwrote {args.out}/ (report.json, kept_indices.txt, " + ("pruned.csv" if args.csv else "kept_paths.txt") + ", removed_rows.csv" + ")")
     return 0
 
 
