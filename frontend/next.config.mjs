@@ -1,1 +1,1 @@
-export default { output: 'standalone', reactStrictMode: true };
+export default { reactStrictMode: true };
