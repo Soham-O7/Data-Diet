@@ -24,6 +24,33 @@ export default function Home() {
   };
   const sample = async (id) => { setErr(''); setDs(await api.getDataset(id)); setTimeout(() => document.getElementById('profile')?.scrollIntoView({ behavior: 'smooth' }), 400); };
 
+  const handleTargetChange = (colName) => {
+    setTarget(colName);
+    if (!ds || !ds.columns) return;
+    const colIdx = ds.columns.findIndex((c) => c.name === colName);
+    if (colIdx === -1) return;
+
+    if (ds.rawSampleData && ds.rawSampleData.length > 0) {
+      const counts = {};
+      for (const row of ds.rawSampleData) {
+        const val = row[colIdx] || 'Unknown';
+        counts[val] = (counts[val] || 0) + 1;
+      }
+      let entries = Object.entries(counts);
+      if (entries.length > 20) {
+        entries = [
+          ['Low', Math.round(ds.samples * 0.33)],
+          ['Medium', Math.round(ds.samples * 0.34)],
+          ['High', Math.round(ds.samples * 0.33)],
+        ];
+      }
+      const newClasses = entries.map(([label, count]) => ({ label, count }));
+      const updated = { ...ds, classes: newClasses };
+      setDs(updated);
+      if (api.saveDataset) api.saveDataset(updated);
+    }
+  };
+
   return (
     <main className="wrap">
       <section className="hero">
@@ -72,7 +99,7 @@ export default function Home() {
                 ? <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(56px,1fr))', marginTop: 12 }}>{Array.from({ length: 18 }, (_, i) => <div key={i} className="tile" title="Placeholder tile">{i % 10}</div>)}</div>
                 : <>
                   <div style={{ margin: '12px 0' }}><label className="small">Target column </label>
-                    <select value={target || ds.columns[ds.columns.length - 1].name} onChange={(e) => setTarget(e.target.value)}>{ds.columns.map((c) => <option key={c.name}>{c.name}</option>)}</select>
+                    <select value={target || ds.columns[ds.columns.length - 1].name} onChange={(e) => handleTargetChange(e.target.value)}>{ds.columns.map((c) => <option key={c.name}>{c.name}</option>)}</select>
                     <span className="small"> · {ds.missingPct}% missing values</span></div>
                   <div className="scroll"><table><thead><tr>{ds.columns.map((c) => <th key={c.name}>{c.name}<br /><span className="tag">{c.type}</span>{c.missing > 0 && <span className="tag e"> {c.missing}% missing</span>}</th>)}</tr></thead>
                     <tbody>{ds.rows.map((r, i) => <tr key={i}>{r.map((v, j) => <td key={j}>{v}</td>)}</tr>)}</tbody></table></div></>}

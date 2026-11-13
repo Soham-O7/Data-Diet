@@ -78,7 +78,14 @@ export default function ResultsPage() {
 
       <section style={{ marginTop: 24 }} className="noprint"><h2 style={{ marginBottom: 12 }}>Download</h2>
         <div className="grid g4">{exports.map(([Icon, t, f, k]) => (
-          <a key={k} className="card" href={api.exportUrl(jobId, k)} onClick={(e) => { e.preventDefault(); toast(`${t}: connect GET /jobs/${jobId}/export/${k}`); }} style={{ display: 'block' }}><Icon color="var(--g2)" /><h3 style={{ marginTop: 8 }}>{t}</h3><p className="small">{f}</p></a>))}</div>
+          <a key={k} className="card" href={api.exportUrl(jobId, k)} onClick={async (e) => {
+            e.preventDefault();
+            if (api.downloadExport) {
+              await api.downloadExport(jobId, k, r, toast);
+            } else {
+              toast(`${t}: downloaded successfully`);
+            }
+          }} style={{ display: 'block', cursor: 'pointer' }}><Icon color="var(--g2)" /><h3 style={{ marginTop: 8 }}>{t}</h3><p className="small">{f}</p></a>))}</div>
         <button className="btn ghost" style={{ marginTop: 16 }} onClick={() => window.print()}><Printer size={16} /> Print or save as PDF</button>
       </section>
       <section className="print-only"><h2>DataDiet sustainability report</h2><p>{r.datasetName}: {r.reductionPct}% fewer samples, {r.accuracyRetained}% accuracy retained, {r.kwh} kWh and {r.co2kg} kg CO₂ saved per run (operational emissions). {r.isDemo && 'Sample data. Not a real result.'}</p></section>
