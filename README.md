@@ -38,6 +38,22 @@ compare_training(["python","train.py","full.csv"], ["python","train.py","pruned.
 CLI: `python -m dataprune run ...` now also writes `removed_rows.csv` and prints class warnings; `python -m dataprune recommend --csv data.csv --target label --tolerance 0.02`.
 `compare_training` measures CPU-seconds of your own command (OS-reported, no GPU) - still an estimate unless your script reports real meter / CodeCarbon readings.
 
+## Web App (Next.js 14 Frontend)
+DataDiet includes a complete green AI optimization interface in `frontend/`:
+- **Dynamic Dataset Ingestion**: Drag-and-drop CSV or image ZIP uploads with client-side header parsing, type inference (`int`, `float`, `category`), missing value audits, and live target selection.
+- **Dataset-Specific Optimization Results**: Tailored fidelity metrics, KS distribution preservation tests, proportional class balance charts, and energy/CO₂ savings scaled to the uploaded dataset.
+- **Audit & Receipt Exports**: Instant downloads for pruned datasets (`.csv`), removed sample audit tables (`.csv`), verification diet plans (`.json`), and printable sustainability receipts.
+- **Run locally**:
+  ```bash
+  cd frontend
+  npm install
+  npm run dev
+  ```
+- **Firebase Hosting**:
+  ```bash
+  npx -y firebase-tools@latest deploy --only hosting
+  ```
+
 ## Design decisions worth knowing (for review)
 - **keep_ratio is relative to the original row count.** Quotas (stage 6) are defined on class counts *after exact-duplicate
   removal*; if cleaning leaves a class short, the shortfall is redistributed. If the target exceeds what survives cleaning,
