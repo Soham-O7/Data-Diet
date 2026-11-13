@@ -30,6 +30,29 @@ export default function ResultsPage() {
         <MetricCard icon={Repeat} title="Break-even" value={r.breakEvenRuns} unit="runs" note="selection cost repaid" />
       </div>
 
+      <div className="card hl noprint" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16, margin: '16px 0 24px' }}>
+        <div>
+          <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <FileArchive size={20} color="var(--g2)" />
+            Optimized Dataset Ready
+          </h3>
+          <p className="small" style={{ margin: '4px 0 0' }}>
+            {100 - r.reductionPct}% retained · {r.accuracyRetained}% accuracy preserved · {(r.balance || []).reduce((s, c) => s + (c.after || 0), 0).toLocaleString()} samples
+          </p>
+        </div>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <button className="btn" onClick={() => api.downloadExport(jobId, 'dataset', r, toast)}>
+            <FileArchive size={16} /> Download {r.kind === 'image' ? 'indices (.json)' : 'optimized dataset (.csv)'}
+          </button>
+          <button className="btn ghost" onClick={() => api.downloadExport(jobId, 'removed', r, toast)}>
+            <FileText size={16} /> Removed samples (.csv)
+          </button>
+          <button className="btn ghost" onClick={() => api.downloadExport(jobId, 'plan', r, toast)}>
+            <FileJson size={16} /> Diet plan (.json)
+          </button>
+        </div>
+      </div>
+
       <div className="tabs noprint" role="tablist" aria-label="Results sections">{TABS.map((t, i) => <button key={t} role="tab" aria-selected={tab === i} onClick={() => setTab(i)}>{t}</button>)}</div>
 
       {tab === 0 && <div className="stack">

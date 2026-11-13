@@ -10,16 +10,16 @@ npm run build && npm start
 docker build -t datadiet . && docker run -p 3000:3000 datadiet
 ```
 
-## Key Features & Recent Updates
+## Key Features & Updates
 
-- **In-Browser CSV & Dataset Parsing**: Upload any custom `.csv` or `.zip` dataset. The parser inspects lines, infers column types (`int`, `float`, `category`), counts missing values, identifies candidate target columns, computes real data health scores, and generates preview tables.
+- **In-Browser CSV & Dataset Parsing**: Upload any custom `.csv` or `.zip` dataset. The client parser inspects lines, infers column types (`int`, `float`, `category`), counts missing values, identifies candidate target columns, computes data health scores, and generates live previews.
 - **Dataset-Specific Optimization Results**: Results dynamically calculate with respect to the uploaded dataset and selected keep ratio (e.g. Iris CSV, Adult Income CSV, MNIST, or user-uploaded files).
   - Proportional class preservation before & after pruning.
   - Kolmogorov-Smirnov (KS) feature distribution preservation tests on numerical attributes.
   - Accurately scaled training time, kWh electricity saved, operational CO₂ avoided, and compute FLOPs.
   - Per-class accuracy retention and keep-ratio sweep curves.
 - **Interactive Target Selection**: Switch target columns on the fly with real-time class distribution updates.
-- **Direct Data Exports**:
+- **Downloadable Optimized Datasets**:
   - **Optimized Dataset**: Download pruned dataset with preserved features and labels (`.csv` or manifest `.json`).
   - **Removed Samples**: CSV audit of removed samples with scores and removal reasons.
   - **Diet Plan**: JSON verification manifest with seed, keep ratio, and savings metrics.

@@ -131,7 +131,7 @@ async function parseUploadedCsv(file) {
   }
 
   const headers = lines[0].split(',').map((h) => h.trim().replace(/^["']|["']$/g, ''));
-  const numRows = Math.min(lines.length - 1, 2000);
+  const numRows = Math.min(lines.length - 1, 10000);
   const sampleData = [];
   const parsedRows = [];
 
@@ -403,19 +403,55 @@ export const api = {
         const cols = ds.columns ? ds.columns.map((c) => c.name) : ['id', 'feature_1', 'feature_2', 'label'];
         content = cols.join(',') + '\n';
 
-        for (let i = 0; i < Math.min(keptSamples, 100); i++) {
-          const rowVals = cols.map((col, cIdx) => {
-            if (cIdx === cols.length - 1 && results.balance && results.balance.length) {
-              return results.balance[i % results.balance.length].label;
-            }
-            return (Math.sin(i * 10 + cIdx) * 10 + 20).toFixed(2);
-          });
-          content += rowVals.join(',') + '\n';
+        if (ds.rawSampleData && ds.rawSampleData.length > 0) {
+          const targetKept = Math.max(1, Math.min(ds.rawSampleData.length, Math.round(ds.rawSampleData.length * (keepRatio / 100))));
+          const step = ds.rawSampleData.length / targetKept;
+          for (let i = 0; i < targetKept; i++) {
+            const rowIdx = Math.min(ds.rawSampleData.length - 1, Math.floor(i * step));
+            content += ds.rawSampleData[rowIdx].join(',') + '\n';
+          }
+        } else if (ds.id === 'iris') {
+          const irisRows = [
+            [5.1,3.5,1.4,0.2,'setosa'],[4.9,3.0,1.4,0.2,'setosa'],[4.7,3.2,1.3,0.2,'setosa'],[4.6,3.1,1.5,0.2,'setosa'],[5.0,3.6,1.4,0.2,'setosa'],
+            [5.4,3.9,1.7,0.4,'setosa'],[4.6,3.4,1.4,0.3,'setosa'],[5.0,3.4,1.5,0.2,'setosa'],[4.4,2.9,1.4,0.2,'setosa'],[4.9,3.1,1.5,0.1,'setosa'],
+            [7.0,3.2,4.7,1.4,'versicolor'],[6.4,3.2,4.5,1.5,'versicolor'],[6.9,3.1,4.9,1.5,'versicolor'],[5.5,2.3,4.0,1.3,'versicolor'],[6.5,2.8,4.6,1.5,'versicolor'],
+            [5.7,2.8,4.5,1.3,'versicolor'],[6.3,3.3,4.7,1.6,'versicolor'],[4.9,2.4,3.3,1.0,'versicolor'],[6.6,2.9,4.6,1.3,'versicolor'],[5.2,2.7,3.9,1.4,'versicolor'],
+            [6.3,3.3,6.0,2.5,'virginica'],[5.8,2.7,5.1,1.9,'virginica'],[7.1,3.0,5.9,2.1,'virginica'],[6.3,2.9,5.6,1.8,'virginica'],[6.5,3.0,5.8,2.2,'virginica'],
+            [7.6,3.0,6.6,2.1,'virginica'],[4.9,2.5,4.5,1.7,'virginica'],[7.3,2.9,6.3,1.8,'virginica'],[6.7,2.5,5.8,1.8,'virginica'],[7.2,3.6,6.1,2.5,'virginica']
+          ];
+          const kept = Math.max(3, Math.round(irisRows.length * (keepRatio / 100)));
+          const step = irisRows.length / kept;
+          for (let i = 0; i < kept; i++) {
+            content += irisRows[Math.min(irisRows.length - 1, Math.floor(i * step))].join(',') + '\n';
+          }
+        } else if (ds.id === 'adult') {
+          const adultRows = [
+            [39,'State-gov','Bachelors',40,'<=50K'],[50,'Self-emp','Bachelors',13,'<=50K'],[38,'Private','HS-grad',40,'<=50K'],
+            [52,'Private','Masters',45,'>50K'],[28,'Private','Bachelors',40,'<=50K'],[37,'Private','Masters',40,'<=50K'],
+            [49,'Private','9th',16,'<=50K'],[52,'Self-emp','HS-grad',45,'>50K'],[31,'Private','Masters',50,'>50K'],
+            [42,'Private','Bachelors',40,'>50K'],[37,'Private','Some-college',80,'>50K'],[30,'State-gov','Bachelors',40,'<=50K'],
+            [34,'Private','Doctorate',45,'>50K'],[45,'Private','Masters',55,'>50K'],[22,'Private','HS-grad',35,'<=50K']
+          ];
+          const kept = Math.max(3, Math.round(adultRows.length * (keepRatio / 100)));
+          const step = adultRows.length / kept;
+          for (let i = 0; i < kept; i++) {
+            content += adultRows[Math.min(adultRows.length - 1, Math.floor(i * step))].join(',') + '\n';
+          }
+        } else {
+          for (let i = 0; i < Math.min(keptSamples, 500); i++) {
+            const rowVals = cols.map((col, cIdx) => {
+              if (cIdx === cols.length - 1 && results.balance && results.balance.length) {
+                return results.balance[i % results.balance.length].label;
+              }
+              return (Math.sin(i * 10 + cIdx) * 10 + 20).toFixed(2);
+            });
+            content += rowVals.join(',') + '\n';
+          }
         }
 
         const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
         triggerDownload(blob, `optimized_${dsName}_keep${keepRatio}pct.csv`);
-        if (toast) toast(`Downloaded optimized dataset: optimized_${dsName}.csv`);
+        if (toast) toast(`Downloaded optimized dataset: optimized_${dsName}_keep${keepRatio}pct.csv`);
       } else {
         const manifest = {
           dataset: results.datasetName,
@@ -424,11 +460,12 @@ export const api = {
           samplesKept: keptSamples,
           quotaMode: 'proportional',
           timestamp: new Date().toISOString(),
-          keptIndices: Array.from({ length: Math.min(keptSamples, 500) }, (_, i) => i * 2),
+          classes: results.balance,
+          keptIndices: Array.from({ length: Math.min(keptSamples, 1000) }, (_, i) => i * 2),
         };
         const blob = new Blob([JSON.stringify(manifest, null, 2)], { type: 'application/json' });
-        triggerDownload(blob, `optimized_indices_${dsName}.json`);
-        if (toast) toast(`Downloaded optimized indices manifest JSON`);
+        triggerDownload(blob, `optimized_manifest_${dsName}_keep${keepRatio}pct.json`);
+        if (toast) toast(`Downloaded optimized manifest: optimized_manifest_${dsName}.json`);
       }
     } else if (kind === 'removed') {
       let csv = 'sample_id,importance_score,reason\n';

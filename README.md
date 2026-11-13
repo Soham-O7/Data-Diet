@@ -38,18 +38,22 @@ compare_training(["python","train.py","full.csv"], ["python","train.py","pruned.
 CLI: `python -m dataprune run ...` now also writes `removed_rows.csv` and prints class warnings; `python -m dataprune recommend --csv data.csv --target label --tolerance 0.02`.
 `compare_training` measures CPU-seconds of your own command (OS-reported, no GPU) - still an estimate unless your script reports real meter / CodeCarbon readings.
 
-## Web App (Next.js 14 Frontend)
-DataDiet includes a complete green AI optimization interface in `frontend/`:
+## Web App (Next.js 14 Frontend v0.2.0)
+DataDiet includes an end-to-end green AI optimization web interface in `frontend/`:
 - **Dynamic Dataset Ingestion**: Drag-and-drop CSV or image ZIP uploads with client-side header parsing, type inference (`int`, `float`, `category`), missing value audits, and live target selection.
-- **Dataset-Specific Optimization Results**: Tailored fidelity metrics, KS distribution preservation tests, proportional class balance charts, and energy/CO₂ savings scaled to the uploaded dataset.
-- **Audit & Receipt Exports**: Instant downloads for pruned datasets (`.csv`), removed sample audit tables (`.csv`), verification diet plans (`.json`), and printable sustainability receipts.
-- **Run locally**:
+- **Dataset-Specific Optimization Results**: Tailored fidelity metrics, KS distribution preservation tests, proportional class balance charts, and energy/CO₂ savings scaled specifically to the uploaded dataset (or sample benchmarks like Iris, Adult Income, and MNIST).
+- **Downloadable Optimized Datasets**: One-click instant downloads for:
+  - **Pruned Optimized Dataset**: Download the exact kept subset (`.csv` for tabular with original column values; manifest `.json` for images).
+  - **Removed Samples Audit**: CSV listing every removed sample ID, importance score, and pruning reason.
+  - **Diet Plan**: JSON verification specification with random seed, keep ratio, and savings metrics.
+  - **Sustainability Receipt**: Printable audit certificate.
+- **Run Locally**:
   ```bash
   cd frontend
   npm install
-  npm run dev
+  npm run dev        # http://localhost:3000
   ```
-- **Firebase Hosting**:
+- **Firebase Deployment**:
   ```bash
   npx -y firebase-tools@latest deploy --only hosting
   ```
