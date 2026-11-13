@@ -1,6 +1,8 @@
 # DataDiet Frontend (v0.2.0)
 Less data. Same intelligence. Greener AI.
 
+**Live Demo**: [https://datadiet-ai-green.web.app](https://datadiet-ai-green.web.app)
+
 Next.js 14 (App Router) · React · JavaScript · Vanilla CSS · Lucide · Recharts.
 
 ```bash

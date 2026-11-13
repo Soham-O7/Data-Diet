@@ -40,6 +40,7 @@ CLI: `python -m dataprune run ...` now also writes `removed_rows.csv` and prints
 
 ## Web App (Next.js 14 Frontend v0.2.0)
 DataDiet includes an end-to-end green AI optimization web interface in `frontend/`:
+- **Live Deployment**: [https://datadiet-ai-green.web.app](https://datadiet-ai-green.web.app) (Hosted globally on Firebase Hosting)
 - **Dynamic Dataset Ingestion**: Drag-and-drop CSV or image ZIP uploads with client-side header parsing, type inference (`int`, `float`, `category`), missing value audits, and live target selection.
 - **Dataset-Specific Optimization Results**: Tailored fidelity metrics, KS distribution preservation tests, proportional class balance charts, and energy/CO₂ savings scaled specifically to the uploaded dataset (or sample benchmarks like Iris, Adult Income, and MNIST).
 - **Downloadable Optimized Datasets**: One-click instant downloads for:
