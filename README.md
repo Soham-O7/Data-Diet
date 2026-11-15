@@ -1,6 +1,6 @@
 # 🌍 DataDiet: Less data. Same intelligence. Greener AI.
 
-> **Live Deployable Link:** [DataDiet Live App](https://datadiet.vercel.app) *(Replace with your active deployment URL)*  
+> **Live Deployable Link:** [DataDiet Live App](https://datadiet-ai-green.web.app/)   
 > *Submission for **FIRE 2026: Sustainable Development Through AI** — Indian Statistical Institute (ISI), Kolkata*
 
 ---
